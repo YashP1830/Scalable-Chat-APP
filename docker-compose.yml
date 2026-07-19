@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # 1. THE MESSAGE BROKER
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka-broker
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # We advertise the service name 'kafka' so other containers can find it
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092 
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+  # 2. THE CACHE & PUB/SUB ROUTER
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+
+  # 3. YOUR MAIN API SERVER
+  api-server:
+    build: ./backend  # Tells Docker to look for the Dockerfile in the backend folder
+    container_name: chat-api
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./backend/.env  # Passes your MongoDB URI and JWT secrets into the container
+    depends_on:
+      - kafka
+      - redis
+
+  # 4. THE DATABASE WORKER
+  db-worker:
+    build: ./backend
+    container_name: chat-db-worker
+    # We override the default "npm start" to run the worker instead
+    command: node src/worker.js 
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - kafka
+      - redis
+
+  # 5. THE ANALYTICS WORKER
+  analytics-worker:
+    build: ./backend
+    container_name: chat-analytics-worker
+    command: node src/analytics-worker.js
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - kafka

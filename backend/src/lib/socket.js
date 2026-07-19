@@ -23,7 +23,8 @@ export const initSocket = (app) => {
   });
 
   // 🔌 1. Set up Redis Clients
-  const pubClient = createClient({ url: "redis://localhost:6379" });
+  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+  const pubClient = createClient({ url: redisUrl});
   const subClient = pubClient.duplicate();
 
   // Connect to Redis and attach the adapter

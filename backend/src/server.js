@@ -3,11 +3,13 @@ import dotenv from "dotenv";
 import path from "path";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { connectKafkaProducer } from "./lib/kafka.js";
 
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import { connectDB } from "./lib/db.js";
 import { initSocket } from "./lib/socket.js";
+import { connectRedisCache } from "./lib/redis.js";
 
 dotenv.config();
 
@@ -42,6 +44,8 @@ const server = initSocket(app);
 server.listen(PORT, () => {
     console.log(`🚀 [Server Instance] Running on port: ${PORT}`);
     connectDB();
+    connectKafkaProducer();
+    connectRedisCache();
 }); 
 
 // ✅ PRODUCTION FRONTEND SERVE
