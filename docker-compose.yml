@@ -28,21 +28,44 @@ services:
       - "6379:6379"
 
   # 3. YOUR MAIN API SERVER
-  api-server:
-    build: ./backend  # Tells Docker to look for the Dockerfile in the backend folder
-    container_name: chat-api
-    ports:
-      - "5000:5000"
+  chat-api-1:
+    build: ./backend
+    container_name: chat-api-1
     environment:
       - PORT=5000
       - KAFKA_BROKER=kafka:9092
       - REDIS_URL=redis://redis:6379
     env_file:
-      - ./backend/.env  # Passes your MongoDB URI and JWT secrets into the container
+      - ./backend/.env
     depends_on:
       - kafka
       - redis
 
+  chat-api-2:
+    build: ./backend
+    container_name: chat-api-2
+    environment:
+      - PORT=5000
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - kafka
+      - redis
+
+  chat-api-3:
+    build: ./backend
+    container_name: chat-api-3
+    environment:
+      - PORT=5000
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - kafka
+      - redis
   # 4. THE DATABASE WORKER
   db-worker:
     build: ./backend
@@ -69,3 +92,15 @@ services:
       - ./backend/.env
     depends_on:
       - kafka
+# 6. THE LOAD BALANCER (The new front door)
+  nginx:
+    image: nginx:latest
+    container_name: chat-load-balancer
+    ports:
+      - "80:80"  # This is the ONLY port exposed to the outside world now!
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - chat-api-1
+      - chat-api-2
+      - chat-api-3

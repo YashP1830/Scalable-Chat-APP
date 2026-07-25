@@ -1,0 +1,29 @@
+config:
+  # Target your Nginx Load Balancer (Port 80)
+  target: "http://localhost"
+  phases:
+    - duration: 30 # Run the test for 30 seconds
+      arrivalRate: 10 # Start with 10 virtual users per second
+      rampTo: 100 # Ramp up to 100 virtual users per second
+      name: "Spike phase"
+
+  # If your routes are protected by JWT auth, you would place a valid token here
+  # For the sake of the test, grab a token from your browser's local storage/cookies
+  payload:
+    # A CSV file with sample user IDs and Tokens (Optional, depending on your auth)
+    # path: "users.csv"
+    # fields:
+    #   - "senderToken"
+    #   - "receiverId"
+
+scenarios:
+  - name: "Spam chat messages"
+    flow:
+      - post:
+          # Adjust this URL to match whatever your actual send-message route is
+          url: "/api/message/send/697cf2ee1871b0af87351a50"
+          headers:
+            # Replace with a valid JWT token from your login session
+            Cookie: "jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTdhNTk2ZGQ3NWY4YzBhNzlkOGQ1NGMiLCJpYXQiOjE3ODUwMTE4MTQsImV4cCI6MTc4NTYxNjYxNH0.-1Q2mAmhWT_O4W3gY9P0UcLyXLr1AkEjflwSp7rnKx4"
+          json:
+            text: "Load testing message from Artillery!"

@@ -24,9 +24,12 @@ function ChatContainer() {
 
     // clean up
     return () => unsubscribeFromMessages();
-  }, [selectedUser, getMessagesByUserId,
-     subscribeToMessages, unsubscribeFromMessages
-    ]);
+  }, [
+    selectedUser,
+    getMessagesByUserId,
+    subscribeToMessages,
+    unsubscribeFromMessages,
+  ]);
 
   useEffect(() => {
     if (messageEndRef.current) {
@@ -43,25 +46,50 @@ function ChatContainer() {
             {messages.map((msg) => (
               <div
                 key={msg._id}
-                className={`chat ${msg.senderId === authUser._id ? "chat-end" : "chat-start"}`}
+                className={`chat ${
+                  msg.senderId === authUser._id ? "chat-end" : "chat-start"
+                }`}
               >
                 <div
-                  className={`chat-bubble relative ${
+                  className={`chat-bubble relative transition-all duration-200 origin-bottom-right ${
                     msg.senderId === authUser._id
                       ? "bg-cyan-600 text-white"
                       : "bg-slate-800 text-slate-200"
+                  } ${
+                    msg.isOptimistic
+                      ? "opacity-60 scale-95" // 👈 Faded and slightly smaller while pending
+                      : "opacity-100 scale-100" // 👈 Full size when confirmed by MongoDB
                   }`}
                 >
                   {msg.image && (
-                    <img src={msg.image} alt="Shared" className="rounded-lg h-48 object-cover" />
+                    <img
+                      src={msg.image}
+                      alt="Shared"
+                      className="rounded-lg h-48 object-cover"
+                    />
                   )}
                   {msg.text && <p className="mt-2">{msg.text}</p>}
-                  <p className="text-xs mt-1 opacity-75 flex items-center gap-1">
-                    {new Date(msg.createdAt).toLocaleTimeString(undefined, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
+                  
+                  {/* Timestamp & Status Container */}
+                  <div className="text-[10px] mt-1 flex items-center justify-end gap-1 opacity-75">
+                    <p>
+                      {new Date(msg.createdAt).toLocaleTimeString(undefined, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    
+                    {/* 👇 Delivery Status Indicator (Only for your messages) */}
+                    {msg.senderId === authUser._id && (
+                      <span className="ml-1 inline-block w-3 text-center">
+                        {msg.isOptimistic ? (
+                          <span className="animate-pulse inline-block">⏳</span>
+                        ) : (
+                          <span className="font-bold">✓</span> 
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
