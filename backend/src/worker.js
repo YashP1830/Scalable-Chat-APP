@@ -1,46 +1,58 @@
 import dotenv from "dotenv";
-import { redisCache, connectRedisCache } from "./lib/redis.js";
-dotenv.config(); // 👈 This loads your MONGODB_URI
+dotenv.config(); // loads MONGODB_URI etc.
 
+import { connectRedisCache } from "./lib/redis.js";
 import { consumer } from "./lib/kafka.js";
 import { connectDB } from "./lib/db.js";
-import Message from "./models/message.js"; // Ensure this path matches your setup
+import Message from "./models/message.js";
 
 async function startWorker() {
   console.log("👷 Starting Database Worker...");
 
-  // 1. The worker needs its own connection to MongoDB
+  // The worker owns its own connections to Mongo, Redis and Kafka.
   await connectDB();
-  // 2. 🔌 CONNECT TO REDIS CACHE (This is the missing link!
   await connectRedisCache();
-  // 2. Connect the consumer to Kafka
   await consumer.connect();
   console.log("✅ Kafka Consumer Connected");
 
-  // 3. Subscribe to our specific conveyor belt
+  // fromBeginning:true lets a freshly-restarted worker drain the backlog that
+  // piled up in Kafka while it was down — this is what persists messages that
+  // were sent during the outage.
   await consumer.subscribe({ topic: "chat-messages", fromBeginning: true });
 
-  // 4. Start the infinite loop to process messages
   await consumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
+    eachMessage: async ({ message }) => {
       try {
-        // Kafka sends data as raw Buffers, so we convert it back to a JSON object
-        const rawString = message.value.toString();
-        const messageData = JSON.parse(rawString);
+        const messageData = JSON.parse(message.value.toString());
+        const { _id, ...rest } = messageData;
 
-        // Save to MongoDB at our own pace
-        const newMessage = new Message(messageData);
-        await newMessage.save();
-        const id1 = newMessage.senderId.toString();
-        const id2 = newMessage.receiverId.toString();
+        // IDEMPOTENT WRITE (upsert by _id):
+        // Kafka may redeliver the same message (consumer restart before the
+        // offset commits, or a full backlog replay). A plain new+save() would
+        // throw duplicate-key errors on every replay. $setOnInsert writes the
+        // doc only the first time and — crucially — leaves an existing doc's
+        // status alone, so a "delivered"/"read" tick set via socket is never
+        // clobbered back to "sent".
+        //
+        // timestamps:false is REQUIRED here. The schema has timestamps:true, so
+        // Mongoose would auto-add `updatedAt` to the $set part of the update —
+        // but `rest` already carries `updatedAt` in $setOnInsert. The same path
+        // in both $set and $setOnInsert makes MongoDB throw
+        // ConflictingUpdateOperators (code 40), which silently killed every
+        // write. Disabling Mongoose timestamps here lets us keep the original
+        // send-time createdAt/updatedAt that travelled through Kafka.
+        await Message.updateOne(
+          { _id },
+          { $setOnInsert: rest },
+          { upsert: true, timestamps: false }
+        );
 
-        // 2. Generate the exact key
-        const chatKey = `chat:${[id1, id2].sort().join("_")}`;
-
-        // 3. Delete the cache
-        await redisCache.del(chatKey);
-        console.log(`🧹 Cleared Redis Cache for key: ${chatKey}`);
-        console.log(`💾 Saved message to DB: ${newMessage._id}`);
+        // NOTE: we intentionally do NOT delete the Redis cache here. The API's
+        // sendMessage already wrote this message into the cache list, so the
+        // cache is authoritative even while this worker is down. Deleting it
+        // would force a re-hydrate from Mongo and could momentarily drop
+        // messages that haven't been persisted yet.
+        console.log(`💾 Persisted message to DB: ${_id}`);
       } catch (error) {
         console.error("❌ Failed to save message:", error);
       }
@@ -48,4 +60,19 @@ async function startWorker() {
   });
 }
 
-startWorker();
+// Graceful shutdown → commit offsets and leave the group cleanly.
+const shutdown = async () => {
+  console.log("👋 DB worker shutting down…");
+  try {
+    await consumer.disconnect();
+  } finally {
+    process.exit(0);
+  }
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+startWorker().catch((err) => {
+  console.error("❌ DB worker failed to start:", err);
+  process.exit(1);
+});

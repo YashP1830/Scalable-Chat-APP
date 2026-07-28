@@ -5,6 +5,7 @@ import ChatHeader from "./ChatHeader.jsx";
 import NoChatHistoryPlaceholder from "./NoChatHistoryPlaceholder.jsx";
 import MessageInput from "./MessageInput.jsx";
 import MessagesLoadingSkeleton from "./MessagesLoadingSkeleton.jsx";
+import MessageTicks from "./MessageTicks.jsx";
 
 function ChatContainer() {
   const {
@@ -79,14 +80,14 @@ function ChatContainer() {
                       })}
                     </p>
                     
-                    {/* 👇 Delivery Status Indicator (Only for your messages) */}
+                    {/* 👇 WhatsApp-style ticks (only for your own messages) */}
                     {msg.senderId === authUser._id && (
-                      <span className="ml-1 inline-block w-3 text-center">
-                        {msg.isOptimistic ? (
-                          <span className="animate-pulse inline-block">⏳</span>
-                        ) : (
-                          <span className="font-bold">✓</span> 
-                        )}
+                      <span className="ml-1 inline-flex items-center">
+                        <MessageTicks
+                          status={
+                            msg.isOptimistic ? "sending" : msg.status || "sent"
+                          }
+                        />
                       </span>
                     )}
                   </div>

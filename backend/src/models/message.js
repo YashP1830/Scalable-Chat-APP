@@ -22,6 +22,15 @@ const messageSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    // WhatsApp-style delivery lifecycle:
+    //   sent      → server accepted it            (single grey tick)
+    //   delivered → receiver's device received it (double grey tick)
+    //   read      → receiver opened the chat       (double blue tick)
+    status: {
+      type: String,
+      enum: ["sent", "delivered", "read"],
+      default: "sent",
+    },
   },
   { timestamps: true }
 );
