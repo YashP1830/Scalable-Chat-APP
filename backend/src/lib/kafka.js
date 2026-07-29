@@ -41,6 +41,19 @@ export const createConsumer = (groupId) =>
 // Backwards-compatible default consumer used by the DB worker.
 export const consumer = createConsumer("chat-db-workers");
 
+// Admin client — used by the metrics endpoint to read topic/consumer offsets
+// so we can compute consumer lag for the observability dashboard.
+export const admin = kafka.admin();
+
+export const connectKafkaAdmin = async () => {
+  try {
+    await admin.connect();
+    console.log("🛠️ Kafka Admin Connected");
+  } catch (error) {
+    console.error("❌ Error connecting Kafka Admin:", error);
+  }
+};
+
 export const connectKafkaProducer = async () => {
   try {
     await producer.connect();

@@ -5,6 +5,7 @@ import { connectRedisCache } from "./lib/redis.js";
 import { consumer } from "./lib/kafka.js";
 import { connectDB } from "./lib/db.js";
 import Message from "./models/message.js";
+import { incrMetric } from "./lib/metrics.js";
 
 async function startWorker() {
   console.log("👷 Starting Database Worker...");
@@ -52,6 +53,7 @@ async function startWorker() {
         // cache is authoritative even while this worker is down. Deleting it
         // would force a re-hydrate from Mongo and could momentarily drop
         // messages that haven't been persisted yet.
+        incrMetric("messages_persisted");
         console.log(`💾 Persisted message to DB: ${_id}`);
       } catch (error) {
         console.error("❌ Failed to save message:", error);

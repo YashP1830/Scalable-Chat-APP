@@ -1,12 +1,13 @@
 import express from 'express'
-import { getAllContacts,getAllChatByUserId ,sendMessage ,getChatPartener} from '../controllers/message.controller.js'
+import { getAllContacts,getAllChatByUserId ,sendMessage ,getChatPartener, getUnreadCounts} from '../controllers/message.controller.js'
 import { protectRoute } from '../middleware/auth.middleware.js'
 import { arcjetProtection } from '../middleware/arcjet.middleware.js'
 const router=express.Router()
 
 router.use(arcjetProtection,protectRoute)
 router.get("/contacts",getAllContacts)
-router.get("/chats",getChatPartener)  
-router.get("/:id",getAllChatByUserId)    
+router.get("/chats",getChatPartener)
+router.get("/unread",getUnreadCounts)   // must be before "/:id"
+router.get("/:id",getAllChatByUserId)
 router.post("/send/:id",sendMessage)
 export default router

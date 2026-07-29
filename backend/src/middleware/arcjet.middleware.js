@@ -2,6 +2,11 @@ import {aj} from "../lib/arcjet.js";
 import { isSpoofedBot } from "@arcjet/inspect";
 
 export const arcjetProtection = async (req, res, next) => {
+  // ARCJET_MODE=OFF fully bypasses the shield — no remote decision call at all.
+  // Use this for load tests so you measure YOUR infra, not ArcJet's round-trip.
+  // (DRY_RUN still calls ArcJet's cloud; OFF skips it entirely.)
+  if (process.env.ARCJET_MODE === "OFF") return next();
+
   try {
     const decision = await aj.protect(req);
 

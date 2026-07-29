@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { LogOutIcon, VolumeOffIcon, Volume2Icon } from "lucide-react";
+import { Link } from "react-router";
+import { LogOutIcon, VolumeOffIcon, Volume2Icon, ActivityIcon } from "lucide-react";
 import { useAuthStore } from "../store/useAuth.stores.js";
 import { useChatStore } from "../store/useChatStore.js";
 
@@ -67,6 +68,15 @@ function ProfileHeader() {
 
         {/* BUTTONS */}
         <div className="flex gap-4 items-center">
+          {/* DASHBOARD BTN */}
+          <Link
+            to="/dashboard"
+            title="System dashboard"
+            className="text-slate-400 hover:text-cyan-300 transition-colors"
+          >
+            <ActivityIcon className="size-5" />
+          </Link>
+
           {/* LOGOUT BTN */}
           <button
             className="text-slate-400 hover:text-slate-200 transition-colors"

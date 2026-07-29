@@ -15,6 +15,7 @@ export const useAuthStore = create((set, get) => ({
   isLoggingIn: false,
   socket: null,
   onlineUsers: [],
+  lastSeen: {}, // { userId: timestamp } — for offline "last seen" text
 
   // 🔐 CHECK AUTH
   checkAuth: async () => {
@@ -96,6 +97,10 @@ export const useAuthStore = create((set, get) => ({
 
     socketInstance.on("getOnlineUsers", (userIds) => {
       set({ onlineUsers: userIds });
+    });
+
+    socketInstance.on("userLastSeen", ({ userId, lastSeen }) => {
+      set((state) => ({ lastSeen: { ...state.lastSeen, [userId]: lastSeen } }));
     });
 
     socketInstance.on("disconnect", () => {

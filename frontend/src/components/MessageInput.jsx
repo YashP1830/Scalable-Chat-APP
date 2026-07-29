@@ -10,8 +10,31 @@ function MessageInput() {
   const [imagePreview, setImagePreview] = useState(null);
 
   const fileInputRef = useRef(null);
+  const typingTimeout = useRef(null);
 
-  const { sendMessage, isSoundEnabled } = useChatStore();
+  const {
+    sendMessage,
+    isSoundEnabled,
+    selectedUser,
+    emitTyping,
+    emitStopTyping,
+    emitGroupTyping,
+    emitGroupStopTyping,
+  } = useChatStore();
+
+  const isGroup = !!selectedUser?.isGroup;
+
+  // Emit "typing" on keystrokes; auto "stopTyping" 1.5s after the last one.
+  const handleTyping = () => {
+    if (!selectedUser) return;
+    if (isGroup) emitGroupTyping(selectedUser._id);
+    else emitTyping(selectedUser._id);
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      if (isGroup) emitGroupStopTyping(selectedUser._id);
+      else emitStopTyping(selectedUser._id);
+    }, 1500);
+  };
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -22,6 +45,12 @@ function MessageInput() {
       text: text.trim(),
       image: imagePreview,
     });
+    // Stop the typing indicator immediately on send.
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+    if (selectedUser) {
+      if (isGroup) emitGroupStopTyping(selectedUser._id);
+      else emitStopTyping(selectedUser._id);
+    }
     setText("");
     setImagePreview("");
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -71,6 +100,7 @@ function MessageInput() {
           value={text}
           onChange={(e) => {
             setText(e.target.value);
+            handleTyping();
             isSoundEnabled && playRandomKeyStrokeSound();
           }}
           className="flex-1 bg-slate-800/50 border border-slate-700/50 rounded-lg py-2 px-4"

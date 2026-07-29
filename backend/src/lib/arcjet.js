@@ -36,7 +36,9 @@ const aj = arcjet({
 });
 
 console.log(
-  `🛡️  ArcJet mode=${MODE} (rate ${RATE_MAX}/${RATE_INTERVAL}s)`
+  process.env.ARCJET_MODE === "OFF"
+    ? "🛡️  ArcJet mode=OFF (protection bypassed — load-test only)"
+    : `🛡️  ArcJet mode=${MODE} (rate ${RATE_MAX}/${RATE_INTERVAL}s)`
 );
 
 export { aj };

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router";
 import Chatpage from "./pages/Chatpage.jsx";
 import Login from "./pages/Login.jsx";
 import Signup from "./pages/SignUp.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 import { useAuthStore } from "./store/useAuth.stores.js";
 import PageLoader from "./components/PageLoader.jsx";
 import { Toaster } from "react-hot-toast";
@@ -56,6 +57,10 @@ export default function App() {
         <Route
           path="/signup"
           element={!authUser ? <Signup /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/dashboard"
+          element={authUser ? <Dashboard /> : <Navigate to="/login" />}
         />
       </Routes>
 

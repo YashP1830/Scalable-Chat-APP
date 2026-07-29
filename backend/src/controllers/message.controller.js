@@ -9,6 +9,7 @@ import {
   getChatKey,
   CHAT_CACHE_TTL_SECONDS,
 } from "../lib/redis.js";
+import { incrMetric } from "../lib/metrics.js";
 
 export const getAllContacts = async (req, res) => {
   try {
@@ -68,11 +69,13 @@ export const getAllChatByUserId = async (req, res) => {
     if (cachedLen > 0) {
       const raw = await redisCache.lRange(chatKey, 0, -1);
       console.log("⚡ Serving chat history from Redis Cache");
+      incrMetric("cache_hits");
       return res.status(200).json(raw.map((s) => JSON.parse(s)));
     }
 
     // 🐢 Slow lane: cache is cold → hydrate it from Mongo and return.
     console.log("🐢 Serving chat history from MongoDB");
+    incrMetric("cache_misses");
     const history = await hydrateChatCache(chatKey, myId, UserToChat);
     res.status(200).json(history);
   } catch (error) {
@@ -80,6 +83,28 @@ export const getAllChatByUserId = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+// Cache "does this user exist?" in a Redis set so the hot send-path doesn't hit
+// Mongo on every single message. First send validates against Mongo and caches
+// the id; subsequent sends are a fast Redis SISMEMBER. This keeps the write path
+// off the (remote) database — the whole point of the Kafka design.
+async function receiverExists(receiverId) {
+  const id = receiverId.toString();
+  try {
+    if (await redisCache.sIsMember("known_users", id)) return true;
+  } catch {
+    /* fall through to DB check */
+  }
+  const exists = await User.exists({ _id: receiverId });
+  if (exists) {
+    try {
+      await redisCache.sAdd("known_users", id);
+    } catch {
+      /* non-fatal */
+    }
+  }
+  return !!exists;
+}
 
 export const sendMessage = async (req, res) => {
   try {
@@ -95,8 +120,7 @@ export const sendMessage = async (req, res) => {
         .status(400)
         .json({ message: "Cannot send messages to yourself." });
     }
-    const receiverExists = await User.exists({ _id: receiverId });
-    if (!receiverExists) {
+    if (!(await receiverExists(receiverId))) {
       return res.status(404).json({ message: "Receiver not found." });
     }
 
@@ -146,9 +170,27 @@ export const sendMessage = async (req, res) => {
       topic: "chat-messages",
       messages: [{ key: chatKey, value: JSON.stringify(message) }],
     });
+    incrMetric("messages_produced");
 
     // 3. Push to the receiver in real time (they dedupe by _id on the client).
     io.to(receiverId.toString()).emit("newMessage", message);
+
+    // 3b. Bump the receiver's unread badge for this conversation and push the
+    //     new count. If they have the chat open, their client emits messageRead
+    //     which resets it back to 0.
+    try {
+      const unread = await redisCache.hIncrBy(
+        `unread:${receiverId}`,
+        senderId.toString(),
+        1
+      );
+      io.to(receiverId.toString()).emit("unreadUpdate", {
+        partnerId: senderId.toString(),
+        count: unread,
+      });
+    } catch (e) {
+      /* non-fatal */
+    }
 
     // 4. Ack the sender.
     res.status(201).json(message);
@@ -158,11 +200,31 @@ export const sendMessage = async (req, res) => {
   }
 };
 
+// Returns a map of { partnerId: unreadCount } for the logged-in user's sidebar.
+export const getUnreadCounts = async (req, res) => {
+  try {
+    const myId = req.user._id.toString();
+    const raw = (await redisCache.hGetAll(`unread:${myId}`)) || {};
+    const counts = {};
+    for (const [partnerId, n] of Object.entries(raw)) {
+      const c = Number(n);
+      if (c > 0) counts[partnerId] = c;
+    }
+    res.status(200).json(counts);
+  } catch (error) {
+    console.log("Error getting unread counts", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
 export const getChatPartener = async (req, res) => {
   try {
     const loggedInuser = req.user._id;
 
+    // Only DMs here (groupId null/absent). Group messages have no receiverId,
+    // so including them would break the mapping below and pollute the DM list.
     const mesaage = await Message.find({
+      groupId: null,
       $or: [{ senderId: loggedInuser }, { receiverId: loggedInuser }],
     });
 

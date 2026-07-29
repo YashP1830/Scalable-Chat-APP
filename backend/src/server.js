@@ -3,13 +3,16 @@ import dotenv from "dotenv";
 import path from "path";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import { connectKafkaProducer, disconnectKafkaProducer } from "./lib/kafka.js";
+import { connectKafkaProducer, disconnectKafkaProducer, connectKafkaAdmin } from "./lib/kafka.js";
 
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
+import groupRoutes from "./routes/group.route.js";
+import metricsRoutes from "./routes/metrics.route.js";
 import { connectDB } from "./lib/db.js";
 import { initSocket } from "./lib/socket.js";
 import { connectRedisCache } from "./lib/redis.js";
+import { incrInstanceRequest } from "./lib/metrics.js";
 
 dotenv.config();
 
@@ -52,20 +55,35 @@ app.get("/api/whoami", (req, res) =>
   res.status(200).json({ instance: INSTANCE_ID })
 );
 
+// Count real API traffic per instance (skip metrics polling & health checks so
+// the dashboard doesn't inflate its own numbers).
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/metrics") && req.path !== "/healthz") {
+    incrInstanceRequest(INSTANCE_ID);
+  }
+  next();
+});
+
+// Health check.
+app.get("/healthz", (req, res) => res.status(200).send("ok"));
+
 // ✅ ROUTES
 app.use("/api/auth", authRoutes);
 app.use("/api/message", messageRoutes);
+app.use("/api/group", groupRoutes);
+app.use("/api/metrics", metricsRoutes);
 
 // ✅ INIT SOCKET **AFTER** MIDDLEWARE
 const server = initSocket(app);
 
 
 server.listen(PORT, () => {
-    console.log(`🚀 [Server Instance] Running on port: ${PORT}`);
+    console.log(`🚀 [Server Instance ${INSTANCE_ID}] Running on port: ${PORT}`);
     connectDB();
     connectKafkaProducer();
+    connectKafkaAdmin();
     connectRedisCache();
-}); 
+});
 
 // ✅ PRODUCTION FRONTEND SERVE
 if (process.env.NODE_ENV === "production") {

@@ -8,10 +8,26 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    // DM target. Required ONLY for 1-to-1 messages (i.e. when there's no group).
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: function () {
+        return !this.groupId;
+      },
+    },
+    // Set for group messages instead of receiverId.
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
+      default: null,
+      index: true,
+    },
+    // Denormalized sender display name — used to label messages in group chats
+    // without populating on every read.
+    senderName: {
+      type: String,
+      default: "",
     },
     text: {
       type: String,

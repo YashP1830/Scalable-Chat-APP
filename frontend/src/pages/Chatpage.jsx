@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useChatStore } from "../store/useChatStore.js";
+import { useAuthStore } from "../store/useAuth.stores.js";
 
 import BorderAnimatedContainer from "../components/BorderAnimatedContainer.jsx";
 import ProfileHeader from "../components/ProfileHeader.jsx";
@@ -9,7 +11,17 @@ import ChatContainer from "../components/ChatContainer.jsx";
 import NoConversationPlaceholder from "../components/NoConversationPlaceholder.jsx";
 
 function ChatPage() {
-  const { activeTab, selectedUser } = useChatStore();
+  const { activeTab, selectedUser, getUnreadCounts, subscribeToNotifications, unsubscribeFromNotifications } =
+    useChatStore();
+  const { socket } = useAuthStore();
+
+  // Once the socket is live: load unread badges + subscribe to typing/unread.
+  useEffect(() => {
+    if (!socket) return;
+    getUnreadCounts();
+    subscribeToNotifications();
+    return () => unsubscribeFromNotifications();
+  }, [socket, getUnreadCounts, subscribeToNotifications, unsubscribeFromNotifications]);
 
   return (
     <div className="relative w-full max-w-6xl h-[800px]">

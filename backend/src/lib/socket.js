@@ -4,6 +4,7 @@ import { createClient } from "redis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { socketAuthMiddleware } from "../middleware/socketAuthMiddleware.js";
 import Message from "../models/message.js";
+import Group from "../models/Group.js";
 import { redisCache, getChatKey, CHAT_CACHE_TTL_SECONDS } from "./redis.js";
 
 let io;
@@ -67,6 +68,14 @@ export const initSocket = (app) => {
     // Each user joins a room named after their id (used for direct delivery).
     socket.join(userId);
 
+    // Join every group room I'm a member of, so group fan-out reaches me.
+    try {
+      const myGroups = await Group.find({ members: socket.userId }).select("_id");
+      for (const g of myGroups) socket.join(`group:${g._id}`);
+    } catch (err) {
+      console.error("❌ joining group rooms failed:", err);
+    }
+
     // Track presence in a shared Redis set.
     await pubClient.sAdd("global_online_users", userId);
     const onlineUsers = await pubClient.sMembers("global_online_users");
@@ -121,6 +130,10 @@ export const initSocket = (app) => {
           "read"
         );
 
+        // Clear my unread badge for this conversation and tell my own devices.
+        await redisCache.hSet(`unread:${userId}`, partnerId.toString(), "0");
+        io.to(userId).emit("unreadUpdate", { partnerId, count: 0 });
+
         // Tell the sender all their messages in this chat are now blue.
         io.to(partnerId.toString()).emit("messagesRead", { by: userId });
       } catch (err) {
@@ -128,9 +141,59 @@ export const initSocket = (app) => {
       }
     });
 
+    // -----------------------------------------------------------------------
+    // ⌨️  TYPING indicator: relay to the other user only (ephemeral, no store).
+    //   payload: { to }  → emits "userTyping"/"userStoppedTyping" { from }
+    // -----------------------------------------------------------------------
+    socket.on("typing", ({ to }) => {
+      if (to) io.to(to.toString()).emit("userTyping", { from: userId });
+    });
+    socket.on("stopTyping", ({ to }) => {
+      if (to) io.to(to.toString()).emit("userStoppedTyping", { from: userId });
+    });
+
+    // ── Group typing (relay to the rest of the group, excluding me) ─────────
+    socket.on("groupTyping", ({ groupId }) => {
+      if (groupId)
+        socket.to(`group:${groupId}`).emit("groupUserTyping", { groupId, from: userId });
+    });
+    socket.on("groupStopTyping", ({ groupId }) => {
+      if (groupId)
+        socket
+          .to(`group:${groupId}`)
+          .emit("groupUserStoppedTyping", { groupId, from: userId });
+    });
+
+    // Opening a group clears my unread badge for it.
+    socket.on("groupRead", async ({ groupId }) => {
+      if (!groupId) return;
+      try {
+        await redisCache.hSet(`unread:${userId}`, groupId.toString(), "0");
+      } catch {
+        /* non-fatal */
+      }
+      io.to(userId).emit("unreadUpdate", { partnerId: groupId, count: 0 });
+    });
+
+    // On-demand last-seen lookup (used when opening a chat with an offline user).
+    socket.on("getLastSeen", async ({ userId: target }) => {
+      if (!target) return;
+      const ts = await redisCache.hGet("last_seen", target.toString());
+      socket.emit("userLastSeen", {
+        userId: target,
+        lastSeen: ts ? Number(ts) : null,
+      });
+    });
+
     socket.on("disconnect", async () => {
       console.log(`🔴 [Port ${PORT}] Socket disconnected:`, socket.id);
       await pubClient.sRem("global_online_users", userId);
+
+      // Record + broadcast last-seen timestamp for presence.
+      const lastSeen = Date.now();
+      await redisCache.hSet("last_seen", userId, lastSeen.toString());
+      io.emit("userLastSeen", { userId, lastSeen });
+
       const currentOnlineUsers = await pubClient.sMembers("global_online_users");
       io.emit("getOnlineUsers", currentOnlineUsers);
     });

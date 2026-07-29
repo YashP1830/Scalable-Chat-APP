@@ -26,15 +26,20 @@ const sendTrend = new Trend("msg_send_duration", true);
 // target is reachable and auth works before the real 3-minute ramp.
 const SMOKE = __ENV.SMOKE === "1" || __ENV.SMOKE === "true";
 
+// summaryTrendStats makes k6 actually compute p99 (default is only p90/p95).
+const TREND_STATS = ["avg", "min", "med", "p(95)", "p(99)", "max"];
+
 export const options = SMOKE
   ? {
       vus: 3,
       duration: "10s",
+      summaryTrendStats: TREND_STATS,
       thresholds: {
         http_req_failed: ["rate<0.10"],
       },
     }
   : {
+      summaryTrendStats: TREND_STATS,
       scenarios: {
         ramp: {
           executor: "ramping-vus",
@@ -62,11 +67,12 @@ const RECEIVER = { fullName: "Load Receiver", email: "load_receiver@test.dev", p
 function authenticate(user) {
   const headers = { "Content-Type": "application/json" };
 
-  // Try login.
+  // Try login. NOTE: this app's login controller returns 201 (not 200) on
+  // success, so both 200 and 201 count as "logged in".
   let res = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify(user), { headers });
 
-  // If the account doesn't exist yet, create it.
-  if (res.status !== 200) {
+  // Only if login genuinely failed (bad creds / no such user) do we sign up.
+  if (res.status !== 200 && res.status !== 201) {
     res = http.post(`${BASE_URL}/api/auth/signup`, JSON.stringify(user), { headers });
   }
 
@@ -119,5 +125,49 @@ export default function (data) {
     check(contactsRes, { "contacts 200": (r) => r.status === 200 });
   }
 
-  sleep(Math.random() * 1 + 0.5); // 0.5–1.5s think time
+  // Realistic think time by default. Set -e STRESS=1 to remove it and measure
+  // MAX throughput (peak req/s) instead of realistic sustained load.
+  if (__ENV.STRESS !== "1") sleep(Math.random() * 1 + 0.5);
+}
+
+// Clean, resume-ready summary — printed at the end and written to summary.json.
+// Self-contained (no external jslib imports so it never fails offline).
+export function handleSummary(data) {
+  const m = data.metrics;
+  const v = (name, key) => (m[name] && m[name].values[key] != null ? m[name].values[key] : 0);
+  const ms = (x) => `${Number(x).toFixed(1)} ms`;
+  const pct = (x) => `${(Number(x) * 100).toFixed(2)}%`;
+
+  const reqs = v("http_reqs", "count");
+  const rps = v("http_reqs", "rate");
+  const iters = v("iterations", "count");
+  const vusMax = v("vus_max", "value") || v("vus_max", "max");
+
+  const lines = [
+    "",
+    "══════════════════════════════════════════════════",
+    "  ChatAppScalable — k6 Load Test Results",
+    "══════════════════════════════════════════════════",
+    `  Peak concurrent users (VUs) : ${vusMax}`,
+    `  Total requests              : ${reqs}`,
+    `  Throughput                  : ${rps.toFixed(1)} req/s`,
+    `  Iterations (full journeys)  : ${iters}`,
+    "  ----------------------------------------------",
+    `  Latency  avg                : ${ms(v("http_req_duration", "avg"))}`,
+    `  Latency  p95                : ${ms(v("http_req_duration", "p(95)"))}`,
+    `  Latency  p99                : ${ms(v("http_req_duration", "p(99)"))}`,
+    `  Latency  max                : ${ms(v("http_req_duration", "max"))}`,
+    `  Send-path p95 (Kafka+Redis) : ${ms(v("msg_send_duration", "p(95)"))}`,
+    "  ----------------------------------------------",
+    `  Error rate                  : ${pct(v("http_req_failed", "rate"))}`,
+    `  Checks passed               : ${pct(v("checks", "rate"))}`,
+    "══════════════════════════════════════════════════",
+    "  (full data written to summary.json)",
+    "",
+  ];
+
+  return {
+    stdout: lines.join("\n"),
+    "summary.json": JSON.stringify(data, null, 2),
+  };
 }
