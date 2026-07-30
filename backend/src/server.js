@@ -13,6 +13,7 @@ import { connectDB } from "./lib/db.js";
 import { initSocket } from "./lib/socket.js";
 import { connectRedisCache } from "./lib/redis.js";
 import { incrInstanceRequest } from "./lib/metrics.js";
+import { corsOriginCheck } from "./lib/corsOrigins.js";
 
 dotenv.config();
 
@@ -28,11 +29,10 @@ const INSTANCE_ID = process.env.INSTANCE_ID || os.hostname();
 // ✅ MIDDLEWARES FIRST
 app.use(
   cors({
-    origin: [
-      process.env.CLIENT_URL,
-      "http://localhost:5173",
-      "http://localhost:5174" // Added the second frontend port
-    ],
+    // Vercel gives every deployment its own preview URL in addition to the
+    // stable CLIENT_URL alias — a static array breaks on every new deploy.
+    // See lib/corsOrigins.js for the actual matching logic.
+    origin: corsOriginCheck,
     credentials: true,
     // Let the browser read our debug header.
     exposedHeaders: ["X-Served-By"],

@@ -6,6 +6,7 @@ import { socketAuthMiddleware } from "../middleware/socketAuthMiddleware.js";
 import Message from "../models/message.js";
 import Group from "../models/Group.js";
 import { redisCache, getChatKey, CHAT_CACHE_TTL_SECONDS } from "./redis.js";
+import { isAllowedOrigin } from "./corsOrigins.js";
 
 let io;
 
@@ -38,11 +39,11 @@ export const initSocket = (app) => {
 
   io = new Server(server, {
     cors: {
-      origin: [
-        process.env.CLIENT_URL,
-        "http://localhost:5173",
-        "http://localhost:5174",
-      ],
+      // Same reasoning as server.js's CORS config — see lib/corsOrigins.js.
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) return callback(null, true);
+        callback(new Error(`Socket.IO CORS blocked: origin "${origin}" is not allowed`));
+      },
       credentials: true,
     },
   });
