@@ -22,10 +22,17 @@ export const useAuthStore = create((set, get) => ({
   // 🔐 CHECK AUTH
   checkAuth: async () => {
     try {
+      // No stored token at all — skip the request instead of relying on the
+      // cookie (which may be silently dropped cross-site anyway).
+      if (!localStorage.getItem("chatapp_token")) {
+        set({ authUser: null });
+        return;
+      }
       const res = await axiosInstance.get("/auth/check");
       set({ authUser: res.data });
     } catch (error) {
       if (error.response?.status === 401) {
+        localStorage.removeItem("chatapp_token");
         set({ authUser: null });
       }
     } finally {
@@ -38,6 +45,7 @@ export const useAuthStore = create((set, get) => ({
     set({ isSigningUp: true });
     try {
       const res = await axiosInstance.post("/auth/signup", data);
+      if (res.data.token) localStorage.setItem("chatapp_token", res.data.token);
       set({ authUser: res.data });
       toast.success("Account created successfully!");
     } catch (error) {
@@ -52,6 +60,7 @@ export const useAuthStore = create((set, get) => ({
     set({ isLoggingIn: true });
     try {
       const res = await axiosInstance.post("/auth/login", data);
+      if (res.data.token) localStorage.setItem("chatapp_token", res.data.token);
       set({ authUser: res.data });
       toast.success("Logged in successfully");
     } catch (error) {
@@ -65,6 +74,7 @@ export const useAuthStore = create((set, get) => ({
   logout: async () => {
     try {
       await axiosInstance.post("/auth/logout");
+      localStorage.removeItem("chatapp_token");
       get().disconnectSocket();
       set({ authUser: null, onlineUsers: [] });
       toast.success("Logged out successfully");
@@ -91,6 +101,10 @@ export const useAuthStore = create((set, get) => ({
 
     const socketInstance = io(SOCKET_URL, {
       withCredentials: true,
+      // Cross-site cookie may be silently dropped (Incognito / third-party
+      // cookie blocking) — pass the token explicitly so
+      // socketAuthMiddleware.js can authenticate the handshake regardless.
+      auth: { token: localStorage.getItem("chatapp_token") },
     });
 
     socketInstance.on("connect", () => {

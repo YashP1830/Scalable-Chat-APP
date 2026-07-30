@@ -6,17 +6,24 @@ export const socketAuthMiddleware = async (socket, next) => {
   try {
     console.log("🟡 Socket auth middleware hit");
 
-    const rawCookie = socket.handshake.headers.cookie;
-    if (!rawCookie) {
-      console.log("❌ No cookies in handshake");
-      return next(new Error("Unauthorized"));
-    }
-
-    const cookies = cookie.parse(rawCookie);
-    const token = cookies.jwt;
+    // Prefer the token passed explicitly via Socket.IO's `auth` handshake
+    // option (io(url, { auth: { token } })) — same reasoning as
+    // auth.middleware.js: the cross-site cookie gets silently dropped in
+    // Incognito / by third-party-cookie blocking, so the socket handshake
+    // needs a cookie-independent way to authenticate too. Cookie stays as a
+    // fallback for same-origin/local dev.
+    let token = socket.handshake.auth?.token;
 
     if (!token) {
-      console.log("❌ JWT cookie missing");
+      const rawCookie = socket.handshake.headers.cookie;
+      if (rawCookie) {
+        const cookies = cookie.parse(rawCookie);
+        token = cookies.jwt;
+      }
+    }
+
+    if (!token) {
+      console.log("❌ No token in handshake auth or cookies");
       return next(new Error("Unauthorized"));
     }
 
