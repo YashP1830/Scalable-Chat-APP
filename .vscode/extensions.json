@@ -1,1 +1,12 @@
-{"test":1}
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-azuretools.vscode-docker",
+    "bradlc.vscode-tailwindcss",
+    "mongodb.mongodb-vscode",
+    "redhat.vscode-yaml",
+    "mikestead.dotenv",
+    "christian-kohler.npm-intellisense"
+  ]
+}

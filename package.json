@@ -9,15 +9,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YashP1830/Real-Time-Chat-App.git"
+    "url": "git+https://github.com/YashP1830/Scalable-Chat-APP.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/YashP1830/Real-Time-Chat-App/issues"
+    "url": "https://github.com/YashP1830/Scalable-Chat-APP/issues"
   },
-  "homepage": "https://github.com/YashP1830/Real-Time-Chat-App#readme"
+  "homepage": "https://github.com/YashP1830/Scalable-Chat-APP#readme"
   
 }
