@@ -3,10 +3,12 @@ import { axiosInstance } from "../lib/axios";
 import { toast } from "react-hot-toast";
 import { io } from "socket.io-client";
 
-const SOCKET_URL = import.meta.env.MODE === "development" ? import.meta.env.VITE_API_URL.replace("/api", "") : "/";
-
-// Then use SOCKET_URL when connecting:
-// const socket = io(SOCKET_URL, { ... })
+// Same fix as lib/axios.js: derive from VITE_API_URL unconditionally instead of
+// branching on MODE, which broke the Vercel production build (defaulted to "/",
+// i.e. the Vercel domain itself, instead of the Azure backend).
+const SOCKET_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
+  : "/";
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,

@@ -92,15 +92,38 @@ services:
     depends_on:
       - kafka
 
+  # Internal load balancer only now — Caddy is the public entry point (below)
+  # and terminates HTTPS, so nginx no longer needs a published host port.
   nginx:
     image: nginx:latest
     container_name: chat-load-balancer
     restart: unless-stopped
-    ports:
-      - "80:80" # only public port
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - chat-api-1
       - chat-api-2
       - chat-api-3
+
+  # Public front door: terminates real HTTPS (auto Let's Encrypt cert for the
+  # Azure DNS name) and reverse-proxies to nginx. Required for the Vercel
+  # frontend (https://) to call this API at all — browsers block "mixed
+  # content" (https page calling an http API) and cross-site cookies require
+  # a real Secure connection.
+  caddy:
+    image: caddy:latest
+    container_name: chat-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - nginx
+
+volumes:
+  caddy_data:
+  caddy_config:

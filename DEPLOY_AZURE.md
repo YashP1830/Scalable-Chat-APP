@@ -48,8 +48,13 @@ monitoring step at the end).
    *(Do not pick B1s — 1 GB RAM is not enough for Kafka + everything else.)*
 7. **Authentication type:** SSH public key (paste yours, or let Azure generate
    one and download it — keep the `.pem` safe).
-8. **Inbound ports:** allow **SSH (22)** and **HTTP (80)**.
+8. **Inbound ports:** allow **SSH (22)**, **HTTP (80)**, and **HTTPS (443)**.
+   (443 is required — Caddy serves the real cert there; see step 6a.)
 9. Review + Create. Wait a few minutes, then note the **Public IP address**.
+
+   Already created the VM with only 80 open? Portal → your VM →
+   **Networking** → **Network settings** → **Add inbound port rule** →
+   destination port `443`, protocol TCP, allow.
 
 ---
 
@@ -63,10 +68,11 @@ Portal → your VM → **Networking** → click the **public IP resource** →
 
 Your permanent link becomes:
 ```
-http://yourname-chatapp.<region>.cloudapp.azure.com
+https://yourname-chatapp.<region>.cloudapp.azure.com
 ```
 Use *this* URL — not the raw IP — anywhere you share the project (resume,
-application forms, README). It survives VM restarts.
+application forms, README). It survives VM restarts. (It's `https://` once you
+set up Caddy in step 6a — until then it's `http://`.)
 
 ---
 
@@ -75,8 +81,7 @@ application forms, README). It survives VM restarts.
 SSH in (Azure Ubuntu images have no extra local firewall by default, so unlike
 Oracle you generally don't need iptables commands here):
 ```bash
-ssh azureuser@
-yashchat-app.malaysiawest.cloudapp.azure.com.cloudapp.azure.com
+ssh azureuser@yashchat-app.malaysiawest.cloudapp.azure.com
 ```
 
 ```bash
@@ -109,10 +114,15 @@ scp backend/.env azureuser@<your-dns-name>.cloudapp.azure.com:~/Scalable-Chat-AP
 Edit `backend/.env` on the VM so:
 - `MONGODB_URI` — add the VM's outbound IP (or `0.0.0.0/0` for simplicity) under
   MongoDB Atlas → Network Access, or Mongo will refuse the connection.
-- `CLIENT_URL=http://yourname-chatapp.<region>.cloudapp.azure.com`
-- `NODE_ENV=development` — needed so the auth cookie isn't marked `Secure`,
-  which browsers would otherwise silently drop over plain HTTP. (If you add
-  HTTPS later per the note at the end, switch this back to `production`.)
+- `CLIENT_URL=` your exact frontend origin, **no trailing slash** — e.g. if the
+  frontend is on Vercel: `CLIENT_URL=https://yash-chat-app-brown.vercel.app`.
+  This has to match exactly or CORS rejects every request from the browser.
+- `NODE_ENV=production` — required if the frontend is on a *different* domain
+  than the backend (e.g. Vercel + Azure, as here). Cross-site auth cookies only
+  work with `SameSite=None; Secure`, which the app only sets when
+  `NODE_ENV=production` (see `backend/src/lib/utils.js`) — and `Secure` only
+  works over real HTTPS, which is why step 6a (Caddy) isn't optional in this
+  split-domain setup, unlike the single-VM Oracle guide.
 
 ---
 
@@ -131,9 +141,55 @@ Verify from your laptop:
 curl http://yourname-chatapp.<region>.cloudapp.azure.com/healthz   # -> ok
 ```
 
+Then do step 6a below before sharing the link — without it, a browser-based
+frontend on a different domain (Vercel) can't log in against this backend.
+
+---
+
+## 6a. Real HTTPS with Caddy (required for a split-domain frontend/backend)
+
+If your frontend is on the *same* origin as the backend (old single-VM setup),
+plain `http://` is fine. If your frontend is on a **different domain** — e.g.
+Vercel — the browser will (a) block "mixed content" API calls from an
+`https://` page to an `http://` API, and (b) refuse to send the auth cookie
+cross-site unless it's `Secure`, which requires real HTTPS. So this step is
+mandatory for that setup, not just polish.
+
+The repo already ships a `Caddyfile` and a `caddy` service in
+`docker-compose.prod.yml` that sits in front of `nginx` and auto-provisions a
+free Let's Encrypt certificate for your Azure DNS name — no manual cert
+handling required.
+
+1. Make sure port **443** is open in the VM's NSG (step 2, or add it now via
+   Networking → Add inbound port rule).
+2. On the VM, pull the latest code (this fixes the compose file and adds the
+   `Caddyfile`):
+   ```bash
+   cd ~/Scalable-Chat-APP
+   git pull
+   ```
+3. Edit `backend/.env` on the VM per the notes in step 5 above
+   (`CLIENT_URL` = your Vercel URL, `NODE_ENV=production`).
+4. Relaunch — Caddy will request the certificate automatically on first boot
+   (needs port 80 reachable for the ACME challenge, which it already is):
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   docker compose -f docker-compose.prod.yml logs -f caddy
+   ```
+   Watch the `caddy` logs for `certificate obtained successfully` — usually
+   takes a few seconds.
+5. Verify:
+   ```bash
+   curl https://yourname-chatapp.<region>.cloudapp.azure.com/healthz   # -> ok
+   ```
+   Open the same URL in a real browser too — it should show a valid padlock,
+   no warning. That's the definitive check; a warning means the DNS name in
+   `Caddyfile` doesn't match the VM's actual DNS label, or port 80/443 isn't
+   reachable from the internet (re-check the NSG rule).
+
 **This is the link to put on your resume / job applications:**
 ```
-http://yourname-chatapp.<region>.cloudapp.azure.com
+https://yourname-chatapp.<region>.cloudapp.azure.com
 ```
 
 ---
@@ -160,15 +216,22 @@ worst case is simply the site going offline — never an unexpected bill.
 
 ---
 
+## Deploying the frontend separately (e.g. Vercel)
+
+If the frontend lives on its own domain instead of being served by this VM:
+
+1. `frontend/.env.production` in the repo already sets `VITE_API_URL` to this
+   backend's `/api` path — Vercel picks it up automatically on `vite build`,
+   no dashboard env-var config needed. Update it (and `frontend/.env`) if your
+   DNS name or region differs.
+2. `frontend/vercel.json` adds the SPA rewrite so client-side routes (e.g.
+   `/dashboard`) don't 404 on a hard refresh.
+3. On the backend VM, set `CLIENT_URL` in `backend/.env` to the exact Vercel
+   URL and `NODE_ENV=production` (step 5), then do step 6a (Caddy/HTTPS) —
+   both are required, not optional, once frontend and backend are on different
+   domains. See the cross-origin cookie note in `backend/src/lib/utils.js`.
+
 ## Optional next steps
 
-- **HTTPS:** a plain `http://` link works fine for demos, but for extra polish,
-  put [Caddy](https://caddyserver.com/) in front of nginx with a free Let's
-  Encrypt certificate — Caddy auto-provisions HTTPS for a domain/DNS name with
-  almost no config. Needs a real domain or the `cloudapp.azure.com` DNS name
-  from step 3.
 - **Load testing against it:** identical to the Oracle guide — run k6 from your
   laptop with `ARCJET_MODE=DRY_RUN`, pointed at your Azure URL instead of an IP.
-- **Frontend:** point `frontend/.env`'s `VITE_API_URL` at
-  `http://yourname-chatapp.<region>.cloudapp.azure.com/api` to click through the
-  UI locally against the live backend.

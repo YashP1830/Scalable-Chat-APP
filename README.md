@@ -13,6 +13,8 @@ This isn't just a chat app with a database. It's a small case study in **event-d
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
 ![nginx](https://img.shields.io/badge/nginx-009639?style=flat&logo=nginx&logoColor=white)
 
+**Live:** [Frontend](https://yash-chat-app-brown.vercel.app/) (Vercel) · [Backend health check](https://yashchat-app.malaysiawest.cloudapp.azure.com/healthz) (Azure)
+
 ---
 
 ## Table of contents

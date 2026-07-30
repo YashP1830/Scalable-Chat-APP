@@ -5,10 +5,17 @@ export const generateToken=(userId,res)=>{
         expiresIn:"7d"
     })
 
+    // Vercel (frontend) and Azure (backend) are different origins, so this is a
+    // cross-site cookie. Browsers only send cross-site cookies when
+    // SameSite=None AND Secure=true (which requires real HTTPS — see Caddy
+    // setup in DEPLOY_AZURE.md). Locally, NODE_ENV isn't "production", so we
+    // keep the old same-site behavior over plain http://localhost.
+    const isProd = process.env.NODE_ENV === "production";
+
     res.cookie("jwt",token,{
         maxAge:7*24*60*60*1000, //milliSecond
         httpOnly:true,
-        sameSite:"lax",
-        secure:process.env.NODE_ENV === "development" ? false :true
+        sameSite: isProd ? "none" : "lax",
+        secure: isProd
     })
 }

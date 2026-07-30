@@ -1,0 +1,3 @@
+yashchat-app.malaysiawest.cloudapp.azure.com {
+	reverse_proxy nginx:80
+}
