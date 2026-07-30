@@ -178,7 +178,8 @@ ChatAppScalable/
 |-- docker-compose.prod.yml  # tuned for cloud VM deployment
 |-- loadtest.k6.js           # k6 load test script
 |-- KAFKA_GUIDE.md           # deep-dive Kafka concepts mapped to this codebase
-|-- DEPLOY_ORACLE.md         # free-tier cloud deployment guide
+|-- DEPLOY_AZURE.md          # Azure for Students deployment guide (no card required)
+|-- DEPLOY_ORACLE.md         # Oracle Cloud Always Free deployment guide
 `-- ChatAppScalable_Architecture_Notes.pdf  # full architecture revision notes
 ```
 
@@ -301,14 +302,17 @@ A representative run: **100 concurrent users, 12,000+ requests, 0% error rate, 1
 
 ## Deployment
 
-See **[DEPLOY_ORACLE.md](./DEPLOY_ORACLE.md)** for a full walkthrough of deploying the entire stack — including Kafka — to a free-forever Oracle Cloud VM, since free *managed* Kafka is effectively unavailable.
+The full stack (including self-hosted Kafka) is deployed on a single cloud VM, since free *managed* Kafka is effectively unavailable. Two guides are included depending on eligibility:
+
+- **[DEPLOY_AZURE.md](./DEPLOY_AZURE.md)** — Azure for Students ($100 credit, no credit card required at signup) — used for the live deployment of this project
+- **[DEPLOY_ORACLE.md](./DEPLOY_ORACLE.md)** — Oracle Cloud Always Free tier (free-forever, but requires card verification at signup)
 
 ## Documentation
 
 This repo includes deep-dive reference material beyond this README:
 
 - **[KAFKA_GUIDE.md](./KAFKA_GUIDE.md)** — Kafka concepts (topics, partitions, consumer groups, KRaft, delivery semantics) explained against this project's actual code, plus an interview Q&A bank
-- **[DEPLOY_ORACLE.md](./DEPLOY_ORACLE.md)** — free-tier cloud deployment guide
+- **[DEPLOY_AZURE.md](./DEPLOY_AZURE.md)** / **[DEPLOY_ORACLE.md](./DEPLOY_ORACLE.md)** — free-tier cloud deployment guides
 - **[ChatAppScalable_Architecture_Notes.pdf](./ChatAppScalable_Architecture_Notes.pdf)** — a complete, diagrammed architecture and revision guide covering every subsystem, feature, and bug fixed along the way
 
 ## Known limitations & roadmap
